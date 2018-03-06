@@ -1,0 +1,27 @@
+#!/usr/bin/env node
+
+/**
+ * 命令入口
+ *  根据模板文件(模板引擎使用handlebars)生成文件
+ *  模板文件包括两部分
+ *    |-template
+ *    |-generate
+ *  配置信息存储在meta.js或者meta.json
+ *  包括元数据、提示信息、自定义模板表达式、filters、skipInterpolation
+ * 子命令
+ *   1.init 根据模板初始化项目结构、
+ *   2.list 展示支持的线上莫办文件
+ *   3.generate 根据模板生成文件
+ * 
+ */
+const banner = require('../lib/banner')
+
+console.log(banner)
+
+require('commander')
+  .version(require('../package').version)
+  .usage('<command> [options]')
+  .command('init', '根据模板初始化项目结构')
+  .command('list', '展示支持的线上模板文件')
+  .command('generate', '根据模板生成文件 ')
+  .parse(process.argv)

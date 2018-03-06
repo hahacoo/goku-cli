@@ -1,0 +1,105 @@
+#!/usr/bin/env node
+
+const program = require('commander')
+const glob = require('glob')
+const download = require('download-git-repo')
+const ora = require('ora')
+const chalk = require('chalk')
+const tildify = require('tildify')
+const inquirer = require('inquirer')
+const rm = require('rimraf').sync
+const path = require('path')
+const exists = require('fs').existsSync
+const logger = require('../lib/logger')
+const generate = require('../lib/generate')
+const warnings = require('../lib/warnings')
+const localPath = require('../lib/local-path')
+
+const isLocalPath = localPath.isLocalPath
+const checkPath = localPath.checkPath
+const getTemplatePath = localPath.getTemplatePath
+const getTmpPath = localPath.getTmpPath
+
+function help() {
+  program.args.length < 1 && program.help()
+}
+
+/**
+ * Generate code snippets.
+ */
+program
+  .usage('<template-name> [sub-template]')
+  .arguments('<template-name> [sub-template]')
+  .option('-l, --list', '查看generator支持列表')
+  .on('--help', () => {
+    console.log()
+    console.log('  Examples:')
+    console.log()
+    console.log(chalk.gray('    # 生成代码片段'))
+    console.log('    $ goku generate template sub-template ')
+    console.log()
+  })
+  .action(function (template, subTemplate = '') {
+
+    /**
+     * Settings.
+     */
+    const isOfficial = template.indexOf('vue@') === 0
+    const name = path.relative('../', process.cwd())
+    const to = path.resolve('.')
+
+    if (isOfficial) {
+      template = template.slice(4)
+    }
+
+    const isLocal = isLocalPath(template)
+    const templatePath = isLocal ? getTemplatePath(template) : getTmpPath(template)
+
+    /**
+     * Padding.
+     */
+    console.log()
+    process.on('exit', () => {
+      console.log()
+    })
+
+    if (!subTemplate && program.list) {
+      list()
+    } else {
+      run()
+    }
+
+    /**
+     * List supported templates.
+     */
+    function list() {
+      glob('template/!(scaffold)/', { cwd: templatePath }, function(err, files) {
+        if (err) logger.fatal(err)
+        console.log('   Including as following template')
+        console.log()
+        files.forEach(function(sub) {
+          console.log('     ' + chalk.green(path.basename(sub)))
+        })
+      })
+    }
+
+    /**
+     * Generate the code snippets.
+     */
+    function run() {
+
+      if (!exists(templatePath)) {
+        logger.fatal(isLocal ? 'The template "%s" does not exist.' : 'The template "%s" has not been downloaded.' , template)
+      }
+
+      // use local sub-template
+      const name = path.relative('../', process.cwd())
+      generate(name, templatePath, subTemplate, to, err => {
+        if (err) logger.fatal(err)
+        console.log()
+        logger.success('Generated "%s".', name)
+      })
+    }
+  }).parse(process.argv)
+
+help()

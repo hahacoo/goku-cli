@@ -1,0 +1,144 @@
+#!/usr/bin/env node
+
+const program = require('commander')
+const download = require('download-git-repo')
+const ora = require('ora')
+const chalk = require('chalk')
+const tildify = require('tildify')
+const inquirer = require('inquirer')
+const rm = require('rimraf').sync
+const path = require('path')
+const exists = require('fs').existsSync
+const logger = require('../lib/logger')
+const generate = require('../lib/generate')
+const warnings = require('../lib/warnings')
+const localPath = require('../lib/local-path')
+
+const isLocalPath = localPath.isLocalPath
+const checkPath = localPath.checkPath
+const getTemplatePath = localPath.getTemplatePath
+const getTmpPath = localPath.getTmpPath
+
+function help() {
+  program.args.length < 1 && program.help()
+}
+
+/**
+ * Initialize the project structure.
+ */
+program
+  .usage('<template-name> [project-name]')
+  .arguments('<template-name> [project-name]')
+  .option('-c, --clone', '使用git clone下载模板')
+  .option('--offline', '使用缓存模板文件')
+  .on('--help', () => {
+    console.log()
+    console.log('  Examples:')
+    console.log()
+    console.log(chalk.gray('    # 使用线上模板生成项目'))
+    console.log('    $ goku init template my-project')
+    console.log()
+    console.log(chalk.gray('    # 使用vuejs官方模板生成项目'))
+    console.log('    $ goku init vue@template my-project')
+    console.log()
+    console.log(chalk.gray('    # 使用本地模板生成项目'))
+    console.log('    $ goku init local my-project')
+    console.log()
+  })
+  .action(function (template, rawName) {
+
+    /**
+     * Settings.
+     */
+    
+    const inPlace = !rawName || rawName === '.' 
+    const name = inPlace ? path.relative('../', process.cwd()) : rawName 
+    const to = path.resolve(rawName || '.')
+    const clone = program.clone || false
+    const isOfficial = template.indexOf('vue@') === 0
+    const subTemplate = isOfficial ? (template = template.slice(4), '') : 'scaffold'
+    const hasSlash = template.indexOf('/') > -1
+    const tmp = getTmpPath(template)
+
+    if (program.offline) {
+      console.log(`> Use cached template at ${chalk.yellow(tildify(tmp))}`)
+      template = tmp
+    }
+
+    /**
+     * Padding.
+     */
+    console.log()
+    process.on('exit', () => {
+      console.log()
+    })
+
+    if (exists(to)) {
+      inquirer.prompt([{
+        type: 'confirm',
+        message: inPlace
+          ? 'Generate project in current directory?'
+          : 'Target directory exists. Continue?',
+        name: 'ok'
+      }]).then(answers => {
+        if (answers.ok) {
+          run()
+        }
+      }).catch(logger.fatal)
+    } else {
+      run()
+    }
+
+    /**
+     * Check, download and generate the project.
+     */
+    function run() {
+      if (isLocalPath(template)) {
+
+        // use local template
+        const templatePath = getTemplatePath(template)
+        if (exists(templatePath)) {
+          generate(name, templatePath, subTemplate, to, err => {
+            if (err) logger.fatal(err)
+            console.log()
+            logger.success('Generated "%s".', name)
+          })
+        } else {
+          logger.fatal('Local template "%s" not found.', template)
+        }
+      } else {
+        if (!hasSlash) {
+
+          // use official templates
+          const officialTemplate = (isOfficial ? 'vuejs-templates/' : 'hahacoo/') + template
+          downloadAndGenerate(officialTemplate)
+        } else {
+          downloadAndGenerate(template)
+        }
+      }
+    }
+
+    /**
+     * Download a generate from a template repo.
+     *
+     * @param {String} template
+     */
+    function downloadAndGenerate(template) {
+      const spinner = ora('downloading template')
+      spinner.start()
+
+      // Remove if local template exists
+      if (exists(tmp)) rm(tmp)
+      download(template, tmp, { clone }, err => {
+        spinner.stop()
+        if (err) logger.fatal('Failed to download repo ' + template + ': ' + err.message.trim())
+        generate(name, tmp, subTemplate, to, err => {
+          if (err) logger.fatal(err)
+          console.log()
+          logger.success('Generated "%s".', name)
+        })
+      })
+    }
+  }).parse(process.argv)
+
+help()
